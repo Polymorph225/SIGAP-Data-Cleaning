@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
 import re
 import io
@@ -21,202 +22,218 @@ st.set_page_config(
 # ─────────────────────────────────────────────
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+/* ═══════════════════════════════════════════════════════════
+   Tema terang, senada dengan SIGAP-Bojonegoro.
+   Token warna dan bayangan sengaja dibuat sama persis supaya
+   kedua aplikasi terasa satu keluarga.
+   ═══════════════════════════════════════════════════════════ */
+:root {
+    --sigap-blue:      #1e5eff;
+    --sigap-blue-deep: #1039a8;
+    --sigap-cyan:      #06b6d4;
+    --sigap-ink:       #0f172a;
+    --sigap-muted:     #56637a;
+    --sigap-line:      rgba(148,163,184,.30);
+    --sigap-surface:   rgba(255,255,255,.74);
 
-html, body, [class*="css"] {
-    font-family: 'Plus Jakarta Sans', sans-serif;
+    --lift-1: 0 1px 2px rgba(15,23,42,.05), 0 2px 6px rgba(15,23,42,.06);
+    --lift-2: 0 2px 4px rgba(15,23,42,.04), 0 10px 24px rgba(30,94,255,.12);
+    --lift-3: 0 12px 28px rgba(30,94,255,.18), 0 28px 56px rgba(15,23,42,.12);
 }
 
-/* ── Background ── */
+/* ── Latar: gradien lembut + noda cahaya ─────────────────── */
 .stApp {
-    background: linear-gradient(135deg, #0f1623 0%, #1a2744 50%, #0f1623 100%);
-    min-height: 100vh;
+    background:
+        radial-gradient(900px 520px at 12% -8%,  rgba(30,94,255,.13), transparent 60%),
+        radial-gradient(760px 460px at 92% 4%,   rgba(6,182,212,.12), transparent 62%),
+        linear-gradient(180deg, #f5f8ff 0%, #eef3fb 46%, #f7f9fc 100%);
+    background-attachment: fixed;
 }
+.block-container { padding: 1.25rem 2rem 3.5rem 2rem; max-width: 1500px; }
 
-/* ── Sidebar ── */
+h1, h2, h3 { color: var(--sigap-ink); letter-spacing: -.015em; }
+h1 { font-weight: 800 !important; }
+h2, h3 { font-weight: 700 !important; }
+
+/* ── Sidebar ─────────────────────────────────────────────── */
 section[data-testid="stSidebar"] {
-    background: linear-gradient(180deg, #111827 0%, #1e2d4a 100%);
-    border-right: 1px solid rgba(99,179,237,0.15);
+    background: linear-gradient(185deg, #ffffff 0%, #f3f7ff 100%);
+    border-right: 1px solid var(--sigap-line);
+    box-shadow: 6px 0 26px rgba(15,23,42,.06);
 }
-section[data-testid="stSidebar"] * { color: #e2e8f0 !important; }
-section[data-testid="stSidebar"] .stSelectbox label,
-section[data-testid="stSidebar"] .stCheckbox label { color: #94a3b8 !important; }
+section[data-testid="stSidebar"] * { color: var(--sigap-ink); }
+section[data-testid="stSidebar"] .stCaption,
+section[data-testid="stSidebar"] small { color: var(--sigap-muted) !important; }
 
-/* ── Header ── */
+/* ── Kepala halaman ──────────────────────────────────────── */
 .main-header {
-    background: linear-gradient(135deg, rgba(30,58,138,0.6) 0%, rgba(14,165,233,0.15) 100%);
-    border: 1px solid rgba(99,179,237,0.3);
-    border-radius: 16px;
-    padding: 2rem 2.5rem;
-    margin-bottom: 1.5rem;
     position: relative;
     overflow: hidden;
+    border-radius: 20px;
+    padding: 1.6rem 2rem;
+    margin-bottom: 1.4rem;
+    background:
+        radial-gradient(620px 280px at 84% 44%, rgba(6,182,212,.30), transparent 66%),
+        linear-gradient(126deg, #0b2f8f 0%, #1e5eff 46%, #2aa9d9 100%);
+    box-shadow: 0 14px 32px rgba(16,57,168,.28), 0 34px 64px rgba(15,23,42,.16);
 }
-.main-header::before {
-    content: '';
-    position: absolute;
-    top: -50%;
-    right: -10%;
-    width: 300px;
-    height: 300px;
-    background: radial-gradient(circle, rgba(14,165,233,0.12) 0%, transparent 70%);
-    border-radius: 50%;
+.main-header::after {
+    content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+    background: linear-gradient(168deg, rgba(255,255,255,.30), rgba(255,255,255,0) 38%);
 }
 .main-header h1 {
-    color: #f0f9ff;
-    font-size: 2.2rem;
-    font-weight: 800;
-    margin: 0 0 0.25rem 0;
-    letter-spacing: -0.03em;
+    color: #ffffff !important;
+    font-size: 1.85rem; font-weight: 800; margin: 0 0 .35rem;
+    letter-spacing: -.02em; position: relative; z-index: 1;
 }
 .main-header p {
-    color: #7dd3fc;
-    font-size: 0.95rem;
-    margin: 0;
-    font-weight: 500;
+    color: rgba(233,242,255,.94);
+    font-size: .95rem; margin: 0; position: relative; z-index: 1;
 }
 
-/* ── Metric cards ── */
-.metric-row {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 1rem;
-    margin-bottom: 1.5rem;
-}
+/* ── Kartu metrik: kaca + terangkat ──────────────────────── */
+.metric-row { display: flex; gap: .9rem; flex-wrap: wrap; margin: .2rem 0 1.1rem; }
 .metric-card {
-    background: rgba(30,41,59,0.8);
-    border: 1px solid rgba(99,179,237,0.2);
-    border-radius: 12px;
-    padding: 1.25rem 1.5rem;
-    text-align: center;
-    backdrop-filter: blur(8px);
+    position: relative;
+    flex: 1 1 180px;
+    padding: 1rem 1.15rem;
+    border-radius: 16px;
+    background: var(--sigap-surface);
+    backdrop-filter: blur(14px) saturate(150%);
+    -webkit-backdrop-filter: blur(14px) saturate(150%);
+    border: 1px solid var(--sigap-line);
+    box-shadow: var(--lift-2);
+    transition: transform .28s cubic-bezier(.22,1,.36,1), box-shadow .28s ease;
+}
+.metric-card::before {
+    content: ""; position: absolute; inset: 0; border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(160deg, rgba(255,255,255,.95), rgba(255,255,255,0) 42%);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor; mask-composite: exclude;
+    pointer-events: none;
+}
+.metric-card:hover {
+    transform: perspective(900px) translateY(-4px) rotateX(4deg);
+    box-shadow: var(--lift-3);
 }
 .metric-card .label {
-    color: #64748b;
-    font-size: 0.75rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    margin-bottom: 0.5rem;
+    color: var(--sigap-muted);
+    font-size: .72rem; font-weight: 700;
+    letter-spacing: .06em; text-transform: uppercase;
 }
 .metric-card .value {
-    color: #e2e8f0;
-    font-size: 1.9rem;
-    font-weight: 800;
-    line-height: 1;
-    font-family: 'JetBrains Mono', monospace;
+    font-size: 1.85rem; font-weight: 800; line-height: 1.25; margin-top: .25rem;
+    background: linear-gradient(120deg, var(--sigap-blue-deep), var(--sigap-cyan));
+    -webkit-background-clip: text; background-clip: text;
+    -webkit-text-fill-color: transparent;
 }
-.metric-card .value.good { color: #34d399; }
-.metric-card .value.warn { color: #fbbf24; }
-.metric-card .value.bad  { color: #f87171; }
+.metric-card .value.good {
+    background: linear-gradient(120deg, #0f766e, #10b981);
+    -webkit-background-clip: text; background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+.metric-card .value.bad {
+    background: linear-gradient(120deg, #b45309, #f59e0b);
+    -webkit-background-clip: text; background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
 
-/* ── Section card ── */
-.section-card {
-    background: rgba(15,22,35,0.7);
-    border: 1px solid rgba(99,179,237,0.15);
-    border-radius: 14px;
-    padding: 1.5rem;
-    margin-bottom: 1rem;
-    backdrop-filter: blur(6px);
-}
+/* ── Judul bagian ───────────────────────────────────────── */
 .section-title {
-    color: #7dd3fc;
-    font-size: 0.8rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    margin-bottom: 1rem;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
+    display: inline-block;
+    color: var(--sigap-blue-deep);
+    font-size: .8rem; font-weight: 800;
+    letter-spacing: .06em; text-transform: uppercase;
+    padding: .34rem .8rem;
+    margin: .2rem 0 .7rem;
+    border-radius: 999px;
+    background: linear-gradient(145deg, #e9f0ff, #d8e6ff);
+    border: 1px solid rgba(255,255,255,.7);
+    box-shadow: var(--lift-1);
 }
 
-/* ── Issue badges ── */
+/* ── Baris catatan pembersihan ───────────────────────────── */
+.log-item {
+    display: flex; align-items: flex-start; gap: .6rem;
+    padding: .55rem .7rem;
+    border-radius: 10px;
+    background: rgba(255,255,255,.62);
+    border: 1px solid var(--sigap-line);
+    color: var(--sigap-ink);
+    font-size: .86rem;
+    margin-bottom: .45rem;
+}
+.log-icon { flex-shrink: 0; font-size: 1rem; line-height: 1.35; }
+
+/* ── Lencana ─────────────────────────────────────────────── */
 .badge {
     display: inline-block;
-    padding: 0.2rem 0.65rem;
+    padding: .26rem .8rem;
     border-radius: 999px;
-    font-size: 0.72rem;
-    font-weight: 600;
-    font-family: 'JetBrains Mono', monospace;
+    font-size: .74rem; font-weight: 700;
+    margin-right: .4rem;
+    border: 1px solid rgba(255,255,255,.6);
+    box-shadow: var(--lift-1);
 }
-.badge-red   { background: rgba(248,113,113,0.15); color: #f87171; border: 1px solid rgba(248,113,113,0.3); }
-.badge-yellow{ background: rgba(251,191,36,0.12);  color: #fbbf24; border: 1px solid rgba(251,191,36,0.3); }
-.badge-green { background: rgba(52,211,153,0.12);  color: #34d399; border: 1px solid rgba(52,211,153,0.3); }
-.badge-blue  { background: rgba(99,179,237,0.12);  color: #63b3ed; border: 1px solid rgba(99,179,237,0.3); }
+.badge-blue   { background:linear-gradient(145deg,#e6efff,#cfe0ff); color:#1746b8; }
+.badge-yellow { background:linear-gradient(145deg,#fff5da,#ffe9b4); color:#8a5a06; }
+.badge-red    { background:linear-gradient(145deg,#ffe3e3,#ffc9c9); color:#a11a1a; }
+.badge-green  { background:linear-gradient(145deg,#e4fbec,#c9f3da); color:#12693c; }
 
-/* ── Log item ── */
-.log-item {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.6rem;
-    padding: 0.6rem 0;
-    border-bottom: 1px solid rgba(99,179,237,0.07);
-    font-size: 0.85rem;
-    color: #94a3b8;
-}
-.log-icon { font-size: 1rem; flex-shrink: 0; margin-top: 1px; }
-
-/* ── Upload zone ── */
+/* ── Petunjuk unggah ─────────────────────────────────────── */
 .upload-hint {
-    background: rgba(14,165,233,0.06);
-    border: 2px dashed rgba(14,165,233,0.25);
-    border-radius: 12px;
-    padding: 1.5rem;
     text-align: center;
-    color: #475569;
-    font-size: 0.9rem;
-    margin-bottom: 1rem;
+    padding: 2.4rem 1.5rem;
+    border-radius: 18px;
+    background: linear-gradient(150deg, rgba(30,94,255,.08), rgba(6,182,212,.06));
+    border: 1px dashed rgba(30,94,255,.34);
+    box-shadow: var(--lift-1);
+    margin-bottom: 1.2rem;
 }
 
-/* ── Dataframe ── */
-[data-testid="stDataFrame"] { border-radius: 10px; overflow: hidden; }
-
-/* ── Buttons ── */
-.stButton > button {
-    background: linear-gradient(135deg, #1d4ed8, #0ea5e9) !important;
-    color: white !important;
-    border: none !important;
-    border-radius: 10px !important;
-    font-weight: 700 !important;
-    font-family: 'Plus Jakarta Sans', sans-serif !important;
-    font-size: 0.9rem !important;
-    padding: 0.6rem 1.5rem !important;
-    transition: all 0.2s !important;
-    box-shadow: 0 4px 15px rgba(14,165,233,0.25) !important;
+/* ── Panel bawaan Streamlit ──────────────────────────────── */
+div[data-testid="stExpander"],
+div[data-testid="stAlert"],
+div[data-testid="stDataFrame"],
+div[data-testid="stTable"] {
+    border-radius: 14px !important;
+    border: 1px solid var(--sigap-line) !important;
+    box-shadow: var(--lift-1);
+    overflow: hidden;
 }
-.stButton > button:hover {
-    transform: translateY(-1px) !important;
-    box-shadow: 0 6px 20px rgba(14,165,233,0.4) !important;
+div[data-testid="stExpander"] { background: var(--sigap-surface); }
+
+/* ── Tombol: timbul, menekan saat diklik ─────────────────── */
+.stButton > button, .stDownloadButton > button, .stLinkButton > a {
+    border-radius: 12px;
+    font-weight: 650;
+    border: 1px solid rgba(30,94,255,.28);
+    box-shadow: var(--lift-1);
+    transition: transform .16s ease, box-shadow .16s ease;
+}
+.stButton > button:hover, .stDownloadButton > button:hover, .stLinkButton > a:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--lift-2);
+}
+.stButton > button:active, .stDownloadButton > button:active {
+    transform: translateY(0);
+    box-shadow: inset 0 2px 5px rgba(15,23,42,.16);
+}
+.stButton > button[kind="primary"],
+.stDownloadButton > button[kind="primary"] {
+    background: linear-gradient(135deg, var(--sigap-blue), var(--sigap-cyan));
+    border: none; color: #fff;
 }
 
-/* ── Download button ── */
-.stDownloadButton > button {
-    background: linear-gradient(135deg, #065f46, #10b981) !important;
-    color: white !important;
-    border: none !important;
-    border-radius: 10px !important;
-    font-weight: 700 !important;
-    font-family: 'Plus Jakarta Sans', sans-serif !important;
-    width: 100% !important;
-    padding: 0.75rem !important;
-    font-size: 1rem !important;
-    box-shadow: 0 4px 15px rgba(16,185,129,0.3) !important;
+hr { border-color: var(--sigap-line); }
+
+@media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
 }
-
-/* ── Checkboxes & selects ── */
-.stCheckbox > label { color: #cbd5e1 !important; font-size: 0.9rem !important; }
-.stSelectbox > label { color: #94a3b8 !important; font-size: 0.8rem !important; font-weight: 600 !important; }
-.stMultiSelect > label { color: #94a3b8 !important; font-size: 0.8rem !important; font-weight: 600 !important; }
-
-/* ── Divider ── */
-hr { border-color: rgba(99,179,237,0.1) !important; }
-
-/* ── Expander ── */
-.streamlit-expanderHeader {
-    background: rgba(30,41,59,0.5) !important;
-    border-radius: 8px !important;
-    color: #7dd3fc !important;
+@media (max-width: 640px) {
+    .metric-card:hover { transform: none; }
+    .block-container { padding: 1rem 1rem 2.5rem 1rem; }
 }
 </style>
 """, unsafe_allow_html=True)
@@ -425,6 +442,187 @@ def to_excel_bytes(df: pd.DataFrame, sheet_name: str = "Data") -> bytes:
 
 
 # ─────────────────────────────────────────────
+#  BANNER 3D — sama seperti SIGAP-Bojonegoro
+# ─────────────────────────────────────────────
+HERO_HEIGHT = 230
+
+HERO_HTML = """
+<div id="hero">
+  <canvas id="globe"></canvas>
+  <div id="copy">
+    <div id="eyebrow">PEMERINTAH KABUPATEN BOJONEGORO &middot; UPT PUSKESMAS PURWOSARI</div>
+    <h1>Data Cleaning SIGAP</h1>
+    <p>Membersihkan dan menggabungkan berkas RME bulanan menjadi satu berkas siap unggah ke SIGAP&#8209;Bojonegoro</p>
+  </div>
+</div>
+
+<style>
+  html, body { margin:0; padding:0; background:transparent; overflow:hidden; }
+  #hero {
+    position: relative;
+    height: 250px;
+    border-radius: 20px;
+    overflow: hidden;
+    background:
+      radial-gradient(680px 300px at 82% 48%, rgba(6,182,212,.30), transparent 66%),
+      linear-gradient(126deg, #0b2f8f 0%, #1e5eff 46%, #2aa9d9 100%);
+    box-shadow: 0 14px 32px rgba(16,57,168,.28), 0 34px 64px rgba(15,23,42,.16);
+    font-family: "Source Sans Pro", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  /* kilau tipis di tepi atas, biar permukaannya terasa melengkung */
+  #hero::after {
+    content:""; position:absolute; inset:0; border-radius:inherit; pointer-events:none;
+    background: linear-gradient(168deg, rgba(255,255,255,.30), rgba(255,255,255,0) 38%);
+  }
+  #globe { position:absolute; inset:0; width:100%; height:100%; display:block; }
+  #copy {
+    position: relative; z-index: 2;
+    padding: 2.1rem 2.3rem;
+    max-width: 58%;
+    color: #fff;
+  }
+  #eyebrow {
+    font-size: .68rem; font-weight: 700; letter-spacing: .14em;
+    color: rgba(255,255,255,.80); margin-bottom: .55rem;
+  }
+  #copy h1 {
+    margin: 0 0 .45rem 0;
+    color: #fff;
+    font-size: clamp(1.7rem, 3.6vw, 2.6rem);
+    font-weight: 800; letter-spacing: -.02em; line-height: 1.08;
+    text-shadow: 0 2px 18px rgba(4,22,74,.45);
+  }
+  #copy p {
+    margin: 0; font-size: .95rem; line-height: 1.5;
+    color: rgba(255,255,255,.90); max-width: 30rem;
+    text-shadow: 0 1px 10px rgba(4,22,74,.35);
+  }
+  @media (max-width: 720px) {
+    #copy { max-width: 100%; padding: 1.5rem 1.5rem; }
+    #copy p { font-size: .86rem; }
+  }
+</style>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function () {
+  var cv = document.getElementById('globe');
+  // three.js tidak termuat (CDN diblokir) -> banner tetap tampil, hanya tanpa globe
+  if (typeof THREE === 'undefined' || !cv) { if (cv) cv.style.display = 'none'; return; }
+
+  var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  var scene  = new THREE.Scene();
+  var camera = new THREE.PerspectiveCamera(42, 1, 0.1, 100);
+  camera.position.z = 5.2;
+
+  var renderer = new THREE.WebGLRenderer({ canvas: cv, alpha: true, antialias: true });
+  renderer.setClearColor(0x000000, 0);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+
+  var world = new THREE.Group();
+  // digeser ke kanan supaya tidak menabrak teks
+  world.position.x = 1.55;
+  scene.add(world);
+
+  var R = 1.62;
+
+  // rangka bola
+  var wire = new THREE.Mesh(
+    new THREE.IcosahedronGeometry(R, 2),
+    new THREE.MeshBasicMaterial({ color: 0xbfe4ff, wireframe: true, transparent: true, opacity: 0.44 })
+  );
+  world.add(wire);
+
+  // bola inti semu, memberi kesan padat
+  var core = new THREE.Mesh(
+    new THREE.SphereGeometry(R * 0.985, 32, 32),
+    new THREE.MeshBasicMaterial({ color: 0x0a2a7a, transparent: true, opacity: 0.42 })
+  );
+  world.add(core);
+
+  // titik-titik "desa" tersebar di permukaan (distribusi spiral Fibonacci)
+  var N = 170, pos = new Float32Array(N * 3), gold = Math.PI * (3 - Math.sqrt(5));
+  for (var i = 0; i < N; i++) {
+    var y = 1 - (i / (N - 1)) * 2;
+    var r = Math.sqrt(Math.max(0, 1 - y * y));
+    var th = gold * i;
+    pos[i*3]   = Math.cos(th) * r * R * 1.012;
+    pos[i*3+1] = y * R * 1.012;
+    pos[i*3+2] = Math.sin(th) * r * R * 1.012;
+  }
+  var pg = new THREE.BufferGeometry();
+  pg.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  world.add(new THREE.Points(pg, new THREE.PointsMaterial({
+    color: 0xaef6ff, size: 0.056, transparent: true, opacity: 1.0, sizeAttenuation: true
+  })));
+
+  // dua cincin orbit miring
+  [[0.62, 2.18], [-0.45, 2.52]].forEach(function (o) {
+    var ring = new THREE.Mesh(
+      new THREE.TorusGeometry(o[1], 0.006, 8, 128),
+      new THREE.MeshBasicMaterial({ color: 0x9fe9ff, transparent: true, opacity: 0.42 })
+    );
+    ring.rotation.x = Math.PI / 2 + o[0];
+    ring.rotation.y = o[0] * 0.5;
+    world.add(ring);
+  });
+
+  function resize() {
+    var w = cv.clientWidth, h = cv.clientHeight;
+    if (!w || !h) return;
+    renderer.setSize(w, h, false);
+    camera.aspect = w / h;
+    // di layar sempit globe dikecilkan & digeser supaya teks tetap terbaca
+    var narrow = w < 720;
+    world.position.x = narrow ? 0.85 : 1.55;
+    world.scale.setScalar(narrow ? 0.72 : 1);
+    camera.updateProjectionMatrix();
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  // parallax halus mengikuti kursor
+  var tx = 0, ty = 0;
+  document.addEventListener('mousemove', function (e) {
+    tx = (e.clientX / window.innerWidth  - 0.5) * 0.34;
+    ty = (e.clientY / window.innerHeight - 0.5) * 0.22;
+  });
+
+  var visible = true;
+  document.addEventListener('visibilitychange', function () { visible = !document.hidden; });
+
+  var t = 0;
+  function frame() {
+    requestAnimationFrame(frame);
+    if (!visible) return;                 // berhenti menggambar saat tab tidak aktif
+    t += reduce ? 0 : 0.0024;             // hormati setelan "kurangi animasi"
+    world.rotation.y = t * 2.6;
+    world.rotation.x = -0.24 + Math.sin(t * 1.7) * 0.05;
+    world.rotation.y += (tx - world.rotation.y % (Math.PI * 2)) * 0;
+    camera.position.x = tx;
+    camera.position.y = -ty;
+    camera.lookAt(world.position.x * 0.45, 0, 0);
+    renderer.render(scene, camera);
+  }
+  frame();
+})();
+</script>
+"""
+
+def render_hero_3d():
+    """Banner header dengan globe 3D berputar, kembaran banner SIGAP-Bojonegoro.
+
+    Bila three.js gagal dimuat — misalnya jaringan puskesmas memblokir CDN —
+    banner tetap tampil rapi dengan gradiennya saja, teksnya tidak pernah hilang.
+    """
+    if hasattr(st, "iframe"):
+        st.iframe(HERO_HTML, height=HERO_HEIGHT)
+    else:
+        components.html(HERO_HTML, height=HERO_HEIGHT, scrolling=False)
+
+
+# ─────────────────────────────────────────────
 #  PEMBACAAN & PENGGABUNGAN BERKAS
 # ─────────────────────────────────────────────
 
@@ -597,8 +795,8 @@ def ke_csv_bytes(df: pd.DataFrame) -> bytes:
 with st.sidebar:
     st.markdown("""
     <div style="padding: 1rem 0 1.5rem;">
-        <div style="font-size:1.35rem; font-weight:800; color:#f0f9ff; letter-spacing:-0.03em;">🧹 Data Cleaning SIGAP</div>
-        <div style="font-size:0.75rem; color:#475569; margin-top:0.2rem;">Penyiap data untuk SIGAP-Bojonegoro · v2.0</div>
+        <div style="font-size:1.3rem; font-weight:800; color:#0f172a; letter-spacing:-0.03em;">🧹 Data Cleaning SIGAP</div>
+        <div style="font-size:0.75rem; color:#56637a; margin-top:0.2rem;">Penyiap data untuk SIGAP-Bojonegoro · v2.0</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -646,21 +844,16 @@ with st.sidebar:
 # ─────────────────────────────────────────────
 #  MAIN CONTENT
 # ─────────────────────────────────────────────
-st.markdown("""
-<div class="main-header">
-    <h1>🧹 Data Cleaning SIGAP Bojonegoro</h1>
-    <p>Membersihkan dan menggabungkan berkas RME bulanan menjadi satu berkas siap pakai</p>
-</div>
-""", unsafe_allow_html=True)
+render_hero_3d()
 
 if not uploaded_files:
     st.markdown("""
     <div class="upload-hint">
         <div style="font-size:2.5rem; margin-bottom:0.75rem;">📂</div>
-        <div style="color:#7dd3fc; font-weight:600; font-size:1rem; margin-bottom:0.4rem;">
+        <div style="color:#1039a8; font-weight:700; font-size:1rem; margin-bottom:0.4rem;">
             Unggah berkas RME di sidebar kiri — boleh beberapa bulan sekaligus
         </div>
-        <div style="font-size:0.8rem; color:#475569;">
+        <div style="font-size:0.82rem; color:#56637a;">
             Format yang didukung: .xlsx · .xls · .csv<br>
             Termasuk berkas .xls dari RME yang sebenarnya berisi teks berpemisah tab
         </div>
@@ -668,8 +861,7 @@ if not uploaded_files:
     """, unsafe_allow_html=True)
 
     st.markdown("""
-    <div class="section-card">
-        <div class="section-title">📋 Fitur Pembersihan</div>
+    <div class="section-title">📋 Fitur Pembersihan</div>
     """, unsafe_allow_html=True)
 
     cols = st.columns(3)
@@ -686,15 +878,15 @@ if not uploaded_files:
     for i, (icon, title, desc) in enumerate(features):
         with cols[i % 3]:
             st.markdown(f"""
-            <div style="background:rgba(30,41,59,0.6); border:1px solid rgba(99,179,237,0.15);
-                        border-radius:10px; padding:1rem; margin-bottom:0.75rem; text-align:center;">
+            <div style="background:rgba(255,255,255,.74); border:1px solid rgba(148,163,184,.30);
+                        border-radius:14px; padding:1rem; margin-bottom:0.75rem; text-align:center;
+                        box-shadow:0 2px 4px rgba(15,23,42,.04), 0 10px 24px rgba(30,94,255,.12);">
                 <div style="font-size:1.8rem;">{icon}</div>
-                <div style="color:#e2e8f0; font-weight:700; font-size:0.9rem; margin:0.4rem 0 0.3rem;">{title}</div>
-                <div style="color:#64748b; font-size:0.78rem;">{desc}</div>
+                <div style="color:#0f172a; font-weight:700; font-size:0.9rem; margin:0.4rem 0 0.3rem;">{title}</div>
+                <div style="color:#56637a; font-size:0.78rem;">{desc}</div>
             </div>
             """, unsafe_allow_html=True)
 
-    st.markdown("</div>", unsafe_allow_html=True)
     st.stop()
 
 
@@ -775,7 +967,6 @@ st.markdown(f"""
 col_left, col_right = st.columns([1, 2])
 
 with col_left:
-    st.markdown('<div class="section-card">', unsafe_allow_html=True)
     st.markdown('<div class="section-title">🔍 Masalah Terdeteksi</div>', unsafe_allow_html=True)
 
     if not issues:
@@ -823,10 +1014,8 @@ with col_left:
                 <span>Kolom tanggal: <span class="badge badge-blue">{', '.join(issues['date_cols'])}</span></span>
             </div>""", unsafe_allow_html=True)
 
-    st.markdown('</div>', unsafe_allow_html=True)
 
     # Column selector for dropping
-    st.markdown('<div class="section-card">', unsafe_allow_html=True)
     st.markdown('<div class="section-title">🗂️ Pilih Kolom</div>', unsafe_allow_html=True)
     cols_to_drop = st.multiselect(
         "Kolom yang ingin dihapus",
@@ -839,13 +1028,10 @@ with col_left:
         options=["(tidak diurutkan)"] + list(df_raw.columns),
         index=0
     )
-    st.markdown('</div>', unsafe_allow_html=True)
 
 with col_right:
-    st.markdown('<div class="section-card">', unsafe_allow_html=True)
     st.markdown('<div class="section-title">👁️ Preview Data Asli (10 baris pertama)</div>', unsafe_allow_html=True)
     st.dataframe(df_raw.head(10), use_container_width=True, height=280)
-    st.markdown('</div>', unsafe_allow_html=True)
 
 
 # ─────────────────────────────────────────────
@@ -931,7 +1117,6 @@ if run_clean or "df_clean" in st.session_state:
     res_left, res_right = st.columns([1, 2])
 
     with res_left:
-        st.markdown('<div class="section-card">', unsafe_allow_html=True)
         st.markdown('<div class="section-title">✅ Log Pembersihan</div>', unsafe_allow_html=True)
         for icon, msg in clean_log:
             st.markdown(f"""
@@ -939,13 +1124,10 @@ if run_clean or "df_clean" in st.session_state:
                 <span class="log-icon">{icon}</span>
                 <span>{msg}</span>
             </div>""", unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
 
     with res_right:
-        st.markdown('<div class="section-card">', unsafe_allow_html=True)
         st.markdown('<div class="section-title">✨ Preview Data Bersih</div>', unsafe_allow_html=True)
         st.dataframe(df_clean.head(15), use_container_width=True, height=320)
-        st.markdown('</div>', unsafe_allow_html=True)
 
     # ── Unduhan ────────────────────────────────
     st.markdown("---")
