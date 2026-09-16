@@ -10,8 +10,8 @@ from openpyxl.utils import get_column_letter
 #  PAGE CONFIG
 # ─────────────────────────────────────────────
 st.set_page_config(
-    page_title="RME Data Cleaner",
-    page_icon="🏥",
+    page_title="Data Cleaning SIGAP Bojonegoro",
+    page_icon="🧹",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -423,23 +423,199 @@ def to_excel_bytes(df: pd.DataFrame, sheet_name: str = "Data") -> bytes:
     return buf.getvalue()
 
 
+
+# ─────────────────────────────────────────────
+#  PEMBACAAN & PENGGABUNGAN BERKAS
+# ─────────────────────────────────────────────
+
+# Pemetaan kolom ekspor RME Sintesa Emas ke kolom masukan SIGAP-Bojonegoro.
+KOLOM_SIGAP = {
+    "Tgl":        "tanggal_kunjungan",
+    "No RM":      "no_rm",
+    "Usia":       "umur",
+    "L/LP":       "jenis_kelamin",
+    "Unit":       "poli",
+    "Diagnosis":  "diagnosa",
+    "Cara Bayar": "pembiayaan",
+    "Desa":       "desa",
+}
+
+
+def _baca_teks_berpemisah(data: bytes) -> pd.DataFrame:
+    """Ekspor RME kerap berekstensi .xls padahal isinya teks berpemisah tab.
+
+    Fungsi ini menebak pemisahnya dari baris judul, lalu membaca seluruh kolom
+    sebagai teks supaya nomor rekam medis dan NIK tidak berubah jadi angka.
+    """
+    teks = None
+    for enc in ("utf-8-sig", "utf-8", "cp1252", "latin-1"):
+        try:
+            teks = data.decode(enc)
+            break
+        except UnicodeDecodeError:
+            continue
+    if teks is None:
+        raise ValueError("Penyandian karakter berkas tidak dikenali.")
+
+    baris_judul = teks.split("\n", 1)[0]
+    pemisah = max(("\t", ";", "|", ","), key=baris_judul.count)
+    if baris_judul.count(pemisah) == 0:
+        raise ValueError("Tidak ditemukan pemisah kolom pada baris judul.")
+
+    return pd.read_csv(
+        io.StringIO(teks), sep=pemisah, dtype=str,
+        quotechar='"', engine="python", keep_default_na=True,
+    )
+
+
+def baca_berkas(nama: str, data: bytes) -> pd.DataFrame:
+    """Baca satu berkas apa pun bentuknya: csv, xlsx, xls asli, atau xls palsu."""
+    n = nama.lower()
+    if n.endswith(".csv"):
+        return _baca_teks_berpemisah(data)
+    if n.endswith(".xlsx"):
+        return pd.read_excel(io.BytesIO(data), dtype=str, engine="openpyxl")
+    # .xls — bisa Excel lama yang sebenarnya, bisa pula teks berpemisah
+    try:
+        return pd.read_excel(io.BytesIO(data), dtype=str, engine="xlrd")
+    except Exception:
+        return _baca_teks_berpemisah(data)
+
+
+def _ke_tanggal(seri: pd.Series) -> pd.Series:
+    """Ubah kolom tanggal menjadi datetime tanpa salah tebak hari/bulan.
+
+    `dayfirst=True` berbahaya untuk tanggal ISO: pandas menebak formatnya dari
+    nilai pertama, sehingga "2026-04-01" bisa terbaca 1 April atau 4 Januari,
+    dan sisanya yang tanggalnya di atas 12 gagal diurai. Di sini setiap format
+    yang mungkin dicoba satu per satu, lalu yang paling banyak berhasil dipakai.
+    """
+    teks = seri.astype(str).str.strip()
+    formats = ["%Y-%m-%d", "%Y-%m-%d %H:%M:%S", "%d/%m/%Y", "%d-%m-%Y",
+               "%Y/%m/%d", "%d/%m/%y", "%m/%d/%Y"]
+    terbaik, jml_terbaik = None, -1
+    for fmt in formats:
+        t = pd.to_datetime(teks, errors="coerce", format=fmt)
+        n = int(t.notna().sum())
+        if n > jml_terbaik:
+            terbaik, jml_terbaik = t, n
+        if n == len(teks):
+            return t
+    # Tidak ada format baku yang cocok sepenuhnya — serahkan ke penebak pandas.
+    bebas = pd.to_datetime(teks, errors="coerce")
+    return bebas if int(bebas.notna().sum()) > jml_terbaik else terbaik
+
+
+def cari_kolom_tanggal(df: pd.DataFrame):
+    """Cari kolom tanggal kunjungan — bukan tanggal lahir."""
+    for kandidat in ("Tgl", "Tanggal", "tanggal_kunjungan", "Tgl Kunjungan", "Tanggal Kunjungan"):
+        if kandidat in df.columns:
+            return kandidat
+    for c in df.columns:
+        nama = str(c)
+        if re.search(r"tgl|tanggal|date", nama, re.I) and not re.search(r"lahir|birth|daftar", nama, re.I):
+            return c
+    return None
+
+
+@st.cache_data(show_spinner=False)
+def gabung_berkas(berkas: list, buang_kembar: bool = True):
+    """Gabungkan beberapa berkas menjadi satu, urut menurut tanggal kunjungan.
+
+    `berkas` berupa daftar pasangan (nama, isi byte) supaya hasilnya bisa
+    di-cache — objek unggahan Streamlit sendiri tidak bisa di-hash.
+    Mengembalikan (df_gabungan, ringkasan_per_berkas, jumlah_kembar, nama_kolom_tanggal).
+    """
+    potongan, ringkasan = [], []
+
+    for nama, data in berkas:
+        df = baca_berkas(nama, data)
+        df.columns = [str(c).strip() for c in df.columns]
+        kol_tgl = cari_kolom_tanggal(df)
+        tgl = (_ke_tanggal(df[kol_tgl]) if kol_tgl
+               else pd.Series(pd.NaT, index=df.index))
+        ringkasan.append({
+            "Berkas": nama,
+            "Baris": len(df),
+            "Kolom": len(df.columns),
+            "Tanggal awal": tgl.min().strftime("%d/%m/%Y") if tgl.notna().any() else "—",
+            "Tanggal akhir": tgl.max().strftime("%d/%m/%Y") if tgl.notna().any() else "—",
+            "Tanggal tak terbaca": int(tgl.isna().sum()),
+        })
+        df = df.copy()
+        df["_urut_tanggal"] = tgl
+        df["_asal_berkas"] = nama
+        potongan.append(df)
+
+    gab = pd.concat(potongan, ignore_index=True, sort=False)
+
+    kolom_asli = [c for c in gab.columns if not c.startswith("_")]
+    kembar = int(gab.duplicated(subset=kolom_asli).sum())
+    if buang_kembar and kembar:
+        gab = gab.drop_duplicates(subset=kolom_asli).reset_index(drop=True)
+
+    # Urutkan menurut tanggal; baris tanpa tanggal ditaruh di akhir agar terlihat.
+    gab = gab.sort_values("_urut_tanggal", kind="stable", na_position="last").reset_index(drop=True)
+
+    kol_tgl_akhir = cari_kolom_tanggal(gab.drop(columns=["_urut_tanggal", "_asal_berkas"]))
+    return gab, ringkasan, kembar, kol_tgl_akhir
+
+
+def ke_format_sigap(df: pd.DataFrame):
+    """Ubah data gabungan menjadi 8 kolom masukan SIGAP-Bojonegoro.
+
+    Kolom identitas — nama, NIK, alamat, nomor penjamin — sengaja tidak ikut.
+    Mengembalikan (df_sigap, daftar_kolom_yang_tidak_ditemukan).
+    """
+    ada = {asal: baru for asal, baru in KOLOM_SIGAP.items() if asal in df.columns}
+    kurang = [asal for asal in KOLOM_SIGAP if asal not in df.columns]
+    if not ada:
+        return None, kurang
+
+    out = df[list(ada.keys())].rename(columns=ada).copy()
+
+    if "tanggal_kunjungan" in out.columns:
+        out["tanggal_kunjungan"] = _ke_tanggal(out["tanggal_kunjungan"]).dt.strftime("%Y-%m-%d")
+    if "umur" in out.columns:
+        # "69 Thn 11 Bln 28 Hari" -> 69
+        out["umur"] = out["umur"].astype(str).str.extract(r"(\d+)")[0]
+    if "no_rm" in out.columns:
+        out["no_rm"] = (out["no_rm"].astype(str)
+                        .str.replace(r"[\s,]+$", "", regex=True).str.strip())
+
+    urutan = [baru for baru in KOLOM_SIGAP.values() if baru in out.columns]
+    return out[urutan], kurang
+
+
+def ke_csv_bytes(df: pd.DataFrame) -> bytes:
+    return df.to_csv(index=False).encode("utf-8-sig")
+
+
 # ─────────────────────────────────────────────
 #  SIDEBAR
 # ─────────────────────────────────────────────
 with st.sidebar:
     st.markdown("""
     <div style="padding: 1rem 0 1.5rem;">
-        <div style="font-size:1.5rem; font-weight:800; color:#f0f9ff; letter-spacing:-0.03em;">⚕️ RME Cleaner</div>
-        <div style="font-size:0.75rem; color:#475569; margin-top:0.2rem;">Data Quality Tool v1.0</div>
+        <div style="font-size:1.35rem; font-weight:800; color:#f0f9ff; letter-spacing:-0.03em;">🧹 Data Cleaning SIGAP</div>
+        <div style="font-size:0.75rem; color:#475569; margin-top:0.2rem;">Penyiap data untuk SIGAP-Bojonegoro · v2.0</div>
     </div>
     """, unsafe_allow_html=True)
 
-    st.markdown("**📂 Upload File**")
-    uploaded_file = st.file_uploader(
-        "Pilih file Excel atau CSV",
+    st.markdown("**📂 Unggah Berkas**")
+    uploaded_files = st.file_uploader(
+        "Pilih satu atau beberapa berkas bulanan",
         type=["xlsx", "xls", "csv"],
-        label_visibility="collapsed"
+        accept_multiple_files=True,
+        label_visibility="collapsed",
     )
+    st.caption("Beberapa berkas bulanan bisa diunggah sekaligus; hasilnya digabung dan diurutkan menurut tanggal kunjungan.")
+
+    st.markdown("---")
+    st.markdown("**🔗 Penggabungan**")
+    opt_buang_kembar = st.checkbox("Buang baris kembar antarberkas", value=True)
+    opt_urut_tanggal = st.checkbox("Urutkan menurut tanggal kunjungan", value=True)
+    opt_kolom_asal   = st.checkbox("Tambah kolom Asal Berkas", value=False)
 
     st.markdown("---")
     st.markdown("**⚙️ Opsi Pembersihan**")
@@ -462,9 +638,9 @@ with st.sidebar:
     fill_no_penjamin = st.text_input("No Penjamin kosong", value="-")
 
     st.markdown("---")
-    st.markdown("**📤 Format Output**")
-    output_format = st.selectbox("Format download", ["Excel (.xlsx)", "CSV (.csv)"])
-    sheet_name    = st.text_input("Nama sheet (Excel)", value="Data Bersih")
+    st.markdown("**📤 Keluaran**")
+    st.caption("Setiap hasil tersedia dalam dua bentuk: arsip lengkap dan berkas siap unggah ke SIGAP, masing-masing sebagai .xlsx maupun .csv.")
+    sheet_name = st.text_input("Nama sheet (Excel)", value="Data Bersih")
 
 
 # ─────────────────────────────────────────────
@@ -472,21 +648,21 @@ with st.sidebar:
 # ─────────────────────────────────────────────
 st.markdown("""
 <div class="main-header">
-    <h1>🏥 RME Data Cleaner</h1>
-    <p>Pembersihan otomatis data Rekam Medis Elektronik Puskesmas</p>
+    <h1>🧹 Data Cleaning SIGAP Bojonegoro</h1>
+    <p>Membersihkan dan menggabungkan berkas RME bulanan menjadi satu berkas siap pakai</p>
 </div>
 """, unsafe_allow_html=True)
 
-if uploaded_file is None:
+if not uploaded_files:
     st.markdown("""
     <div class="upload-hint">
         <div style="font-size:2.5rem; margin-bottom:0.75rem;">📂</div>
         <div style="color:#7dd3fc; font-weight:600; font-size:1rem; margin-bottom:0.4rem;">
-            Upload file Excel atau CSV di sidebar kiri
+            Unggah berkas RME di sidebar kiri — boleh beberapa bulan sekaligus
         </div>
         <div style="font-size:0.8rem; color:#475569;">
             Format yang didukung: .xlsx · .xls · .csv<br>
-            Data RME Puskesmas (Januari–Desember)
+            Termasuk berkas .xls dari RME yang sebenarnya berisi teks berpemisah tab
         </div>
     </div>
     """, unsafe_allow_html=True)
@@ -498,6 +674,8 @@ if uploaded_file is None:
 
     cols = st.columns(3)
     features = [
+        ("🔗", "Gabung Banyak Berkas", "Beberapa berkas bulanan menjadi satu, urut tanggal"),
+        ("📤", "Dua Bentuk Unduhan", "Arsip lengkap, atau 8 kolom siap unggah ke SIGAP"),
         ("🗑️", "Hapus Duplikat", "Deteksi dan hapus baris yang persis sama"),
         ("✂️", "Trailing Koma", "Hapus karakter ' ,' di akhir sel (No RM, NIK, dll)"),
         ("📅", "Format Tanggal", "Ubah ke format dd/mm/yyyy secara konsisten"),
@@ -523,20 +701,42 @@ if uploaded_file is None:
 # ─────────────────────────────────────────────
 #  LOAD DATA
 # ─────────────────────────────────────────────
-@st.cache_data
-def load_data(file):
-    name = file.name.lower()
-    if name.endswith(".csv"):
-        return pd.read_csv(file), ["Sheet1"]
-    else:
-        xf = pd.ExcelFile(file, engine="openpyxl")
-        return pd.read_excel(file, sheet_name=xf.sheet_names[0], engine="openpyxl"), xf.sheet_names
+berkas_masuk = [(f.name, f.getvalue()) for f in uploaded_files]
 
 try:
-    df_raw, sheet_names = load_data(uploaded_file)
+    with st.spinner(f"Membaca dan menggabungkan {len(berkas_masuk)} berkas..."):
+        df_raw, ringkasan, jml_kembar, kol_tgl = gabung_berkas(berkas_masuk, opt_buang_kembar)
 except Exception as e:
-    st.error(f"❌ Gagal membaca file: {e}")
+    st.error(f"❌ Gagal membaca berkas: {e}")
     st.stop()
+
+asal_berkas = df_raw["_asal_berkas"].copy()
+urut_tanggal = df_raw["_urut_tanggal"].copy()
+df_raw = df_raw.drop(columns=["_urut_tanggal", "_asal_berkas"])
+if opt_kolom_asal:
+    df_raw["Asal Berkas"] = asal_berkas.values
+
+# ── Ringkasan penggabungan ──────────────────────────────────
+if len(berkas_masuk) > 1 or jml_kembar:
+    with st.expander(f"🔗 Ringkasan penggabungan — {len(berkas_masuk)} berkas, {len(df_raw):,} baris".replace(",", "."), expanded=True):
+        st.dataframe(pd.DataFrame(ringkasan), use_container_width=True, hide_index=True)
+        pesan = []
+        if kol_tgl:
+            pesan.append(f"Diurutkan menurut kolom **{kol_tgl}**.")
+        else:
+            pesan.append("⚠️ Kolom tanggal kunjungan tidak ditemukan, urutan mengikuti urutan unggah.")
+        if jml_kembar:
+            pesan.append(
+                f"**{jml_kembar:,}** baris kembar ditemukan dan **dibuang**.".replace(",", ".")
+                if opt_buang_kembar else
+                f"**{jml_kembar:,}** baris kembar ditemukan dan **dipertahankan**.".replace(",", ".")
+            )
+        else:
+            pesan.append("Tidak ada baris kembar antarberkas.")
+        tak_terbaca = int(urut_tanggal.isna().sum())
+        if tak_terbaca:
+            pesan.append(f"⚠️ **{tak_terbaca}** baris tanggalnya tidak terbaca dan ditaruh di urutan paling akhir.")
+        st.markdown(" ".join(pesan))
 
 
 # ─────────────────────────────────────────────
@@ -747,43 +947,73 @@ if run_clean or "df_clean" in st.session_state:
         st.dataframe(df_clean.head(15), use_container_width=True, height=320)
         st.markdown('</div>', unsafe_allow_html=True)
 
-    # ── Download ───────────────────────────────
+    # ── Unduhan ────────────────────────────────
     st.markdown("---")
-    dl_col1, dl_col2, dl_col3 = st.columns([1, 1, 2])
 
-    base_name = uploaded_file.name.rsplit(".", 1)[0]
+    if opt_urut_tanggal:
+        kol_tgl_bersih = cari_kolom_tanggal(df_clean)
+        if kol_tgl_bersih:
+            _t = _ke_tanggal(df_clean[kol_tgl_bersih])
+            df_clean = (df_clean.assign(_t=_t)
+                        .sort_values("_t", kind="stable", na_position="last")
+                        .drop(columns="_t").reset_index(drop=True))
 
-    if output_format == "Excel (.xlsx)":
-        excel_bytes = to_excel_bytes(df_clean, sheet_name)
-        with dl_col1:
-            st.download_button(
-                label="⬇️ Download Excel (.xlsx)",
-                data=excel_bytes,
-                file_name=f"{base_name}_cleaned.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True
-            )
+    # Nama berkas mengikuti rentang tanggal isinya, bukan nama berkas asal.
+    _t = (_ke_tanggal(df_clean[cari_kolom_tanggal(df_clean)])
+          if cari_kolom_tanggal(df_clean) else pd.Series([], dtype="datetime64[ns]"))
+    if len(_t) and _t.notna().any():
+        base_name = f"RME_{_t.min():%Y-%m-%d}_sd_{_t.max():%Y-%m-%d}"
     else:
-        csv_bytes = df_clean.fillna('-').to_csv(index=False).encode("utf-8-sig")
-        with dl_col1:
-            st.download_button(
-                label="⬇️ Download CSV",
-                data=csv_bytes,
-                file_name=f"{base_name}_cleaned.csv",
-                mime="text/csv",
-                use_container_width=True
-            )
+        base_name = "RME_gabungan"
 
-    with dl_col2:
-        # Always offer CSV as secondary
-        csv_bytes2 = df_clean.fillna('-').to_csv(index=False).encode("utf-8-sig")
+    df_sigap, kolom_kurang = ke_format_sigap(df_clean)
+
+    st.markdown('<div class="section-title">📤 Unduh Hasil</div>', unsafe_allow_html=True)
+    u1, u2 = st.columns(2)
+
+    with u1:
+        st.markdown(f"**📚 Arsip lengkap** — {len(df_clean.columns)} kolom, {len(df_clean):,} baris".replace(",", "."))
+        st.caption("Seluruh kolom apa adanya, termasuk identitas pasien. Simpan di tempat yang aman.")
         st.download_button(
-            label="⬇️ Download CSV",
-            data=csv_bytes2,
-            file_name=f"{base_name}_cleaned.csv",
+            "⬇️ Arsip lengkap (.xlsx)",
+            data=to_excel_bytes(df_clean, sheet_name),
+            file_name=f"{base_name}_lengkap.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
+        )
+        st.download_button(
+            "⬇️ Arsip lengkap (.csv)",
+            data=ke_csv_bytes(df_clean.fillna("-")),
+            file_name=f"{base_name}_lengkap.csv",
             mime="text/csv",
-            use_container_width=True
-        ) if output_format == "Excel (.xlsx)" else None
+            use_container_width=True,
+        )
+
+    with u2:
+        if df_sigap is None:
+            st.warning("Kolom yang dibutuhkan SIGAP tidak ditemukan pada data ini.")
+        else:
+            st.markdown(f"**🏥 Siap unggah ke SIGAP** — {len(df_sigap.columns)} kolom, {len(df_sigap):,} baris".replace(",", "."))
+            st.caption("Tanpa nama, NIK, alamat, dan nomor penjamin — aman dibawa ke luar puskesmas.")
+            st.download_button(
+                "⬇️ Siap SIGAP (.csv)",
+                data=ke_csv_bytes(df_sigap),
+                file_name=f"{base_name}_sigap.csv",
+                mime="text/csv",
+                use_container_width=True,
+                type="primary",
+            )
+            st.download_button(
+                "⬇️ Siap SIGAP (.xlsx)",
+                data=to_excel_bytes(df_sigap, "Data SIGAP"),
+                file_name=f"{base_name}_sigap.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+            )
+            if kolom_kurang:
+                st.caption("Kolom asal yang tidak ditemukan: " + ", ".join(kolom_kurang))
+            with st.expander("Pratinjau data siap SIGAP"):
+                st.dataframe(df_sigap.head(15), use_container_width=True, hide_index=True)
 
     # Null checker after clean
     remaining_nulls = df_clean.isnull().sum()

@@ -1,0 +1,24 @@
+# ── Data pasien: JANGAN pernah ikut ter-commit ───────────────
+*.xls
+*.xlsx
+*.csv
+!contoh/*.csv
+Claude outputs/
+RME_*
+sigap_input_*
+Data Penyakit*.zip
+*.crdownload
+
+# ── Python ───────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+.streamlit/secrets.toml
+
+# ── Editor & sistem ──────────────────────────────────────────
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
